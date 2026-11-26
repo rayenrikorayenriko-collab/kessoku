@@ -1,129 +1,151 @@
--- ===========================================================================
--- Kessoku Family (KSF) — Supabase schema
--- Run this once in: Supabase Dashboard → SQL Editor → New query → Run.
--- It is safe to re-run (idempotent).
--- ===========================================================================
+-- ============================================================================
+-- KESSOKU FAMILY (KSF) — SUPABASE SCHEMA / MIGRATION
+-- Safe to re-run. Preserves existing registration rows.
+-- Run in Supabase Dashboard > SQL Editor > New query.
+-- ============================================================================
 
-create extension if not exists "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ---------------------------------------------------------------------------
--- 1. Site configuration (all editable content lives in a single JSONB row)
+-- 1) WEBSITE CONFIGURATION
 -- ---------------------------------------------------------------------------
-create table if not exists public.site_config (
-  id          text primary key default 'main',
-  data        jsonb not null default '{}'::jsonb,
-  updated_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.site_config (
+  id TEXT PRIMARY KEY DEFAULT 'main',
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-alter table public.site_config enable row level security;
+-- Add missing columns if this table was created by an older schema.
+ALTER TABLE public.site_config
+  ADD COLUMN IF NOT EXISTS data JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE public.site_config
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
--- Everyone (including anonymous visitors) may read the public content.
-drop policy if exists "site_config public read" on public.site_config;
-create policy "site_config public read"
-  on public.site_config for select
-  using (true);
+-- Ensure id can be used by ON CONFLICT(id), even for an older table.
+CREATE UNIQUE INDEX IF NOT EXISTS site_config_id_uidx
+  ON public.site_config (id);
 
--- Only authenticated admins may write.
-drop policy if exists "site_config admin insert" on public.site_config;
-create policy "site_config admin insert"
-  on public.site_config for insert
-  to authenticated
-  with check (true);
+ALTER TABLE public.site_config ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "site_config admin update" on public.site_config;
-create policy "site_config admin update"
-  on public.site_config for update
-  to authenticated
-  using (true)
-  with check (true);
+DROP POLICY IF EXISTS "site_config public read" ON public.site_config;
+CREATE POLICY "site_config public read"
+  ON public.site_config FOR SELECT TO anon, authenticated
+  USING (true);
 
-drop policy if exists "site_config admin delete" on public.site_config;
-create policy "site_config admin delete"
-  on public.site_config for delete
-  to authenticated
-  using (true);
+DROP POLICY IF EXISTS "site_config admin insert" ON public.site_config;
+CREATE POLICY "site_config admin insert"
+  ON public.site_config FOR INSERT TO authenticated
+  WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
--- Seed the single configuration row.
-insert into public.site_config (id, data)
-values ('main', '{}'::jsonb)
-on conflict (id) do nothing;
+DROP POLICY IF EXISTS "site_config admin update" ON public.site_config;
+CREATE POLICY "site_config admin update"
+  ON public.site_config FOR UPDATE TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+DROP POLICY IF EXISTS "site_config admin delete" ON public.site_config;
+CREATE POLICY "site_config admin delete"
+  ON public.site_config FOR DELETE TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+INSERT INTO public.site_config (id, data)
+VALUES ('main', '{}'::jsonb)
+ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- 2. Member registrations
+-- 2) MEMBER REGISTRATIONS
+-- Create the complete table for new projects.
 -- ---------------------------------------------------------------------------
-create table if not exists public.registrations (
-  id          uuid primary key default gen_random_uuid(),
-  name        text not null,
-  gender      text,
-  tiktok      text,
-  gen         text,
-  skill       text,
-  cn_format   text,
-  cn_value    text,
-  created_at  timestamptz not null default now()
+CREATE TABLE IF NOT EXISTS public.registrations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  gender TEXT,
+  tiktok TEXT,
+  gen TEXT,
+  skill TEXT,
+  cn_format TEXT,
+  cn_value TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-create index if not exists registrations_created_at_idx
-  on public.registrations (created_at desc);
+-- Migrate older registrations tables. Add created_at BEFORE creating its index.
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS gender TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS tiktok TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS gen TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS skill TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS cn_format TEXT;
+ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS cn_value TEXT;
+ALTER TABLE public.registrations
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE public.registrations
+  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
 
-alter table public.registrations enable row level security;
+-- Fill any missing ids in a pre-existing table and ensure future ids are generated.
+UPDATE public.registrations SET id = gen_random_uuid() WHERE id IS NULL;
+ALTER TABLE public.registrations ALTER COLUMN id SET DEFAULT gen_random_uuid();
 
--- Visitors may submit a registration…
-drop policy if exists "registrations public insert" on public.registrations;
-create policy "registrations public insert"
-  on public.registrations for insert
-  to anon, authenticated
-  with check (true);
+CREATE UNIQUE INDEX IF NOT EXISTS registrations_id_uidx
+  ON public.registrations (id);
+CREATE INDEX IF NOT EXISTS registrations_created_at_idx
+  ON public.registrations (created_at DESC);
 
--- …but only authenticated admins may read, update or delete them.
-drop policy if exists "registrations admin read" on public.registrations;
-create policy "registrations admin read"
-  on public.registrations for select
-  to authenticated
-  using (true);
+ALTER TABLE public.registrations ENABLE ROW LEVEL SECURITY;
 
-drop policy if exists "registrations admin update" on public.registrations;
-create policy "registrations admin update"
-  on public.registrations for update
-  to authenticated
-  using (true)
-  with check (true);
+DROP POLICY IF EXISTS "registrations public insert" ON public.registrations;
+CREATE POLICY "registrations public insert"
+  ON public.registrations FOR INSERT TO anon, authenticated
+  WITH CHECK (name IS NOT NULL AND length(trim(name)) > 0);
 
-drop policy if exists "registrations admin delete" on public.registrations;
-create policy "registrations admin delete"
-  on public.registrations for delete
-  to authenticated
-  using (true);
+DROP POLICY IF EXISTS "registrations admin read" ON public.registrations;
+CREATE POLICY "registrations admin read"
+  ON public.registrations FOR SELECT TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+DROP POLICY IF EXISTS "registrations admin update" ON public.registrations;
+CREATE POLICY "registrations admin update"
+  ON public.registrations FOR UPDATE TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  WITH CHECK ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+DROP POLICY IF EXISTS "registrations admin delete" ON public.registrations;
+CREATE POLICY "registrations admin delete"
+  ON public.registrations FOR DELETE TO authenticated
+  USING ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 -- ---------------------------------------------------------------------------
--- 3. Storage bucket for media (images & videos)
+-- 3) PUBLIC MEDIA STORAGE BUCKET (50 MB max per file)
 -- ---------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit)
-values ('media', 'media', true, 52428800)  -- 50 MB per file
-on conflict (id) do nothing;
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('media', 'media', true, 52428800)
+ON CONFLICT (id) DO UPDATE
+SET public = EXCLUDED.public,
+    file_size_limit = EXCLUDED.file_size_limit;
 
--- Public read of media objects.
-drop policy if exists "media public read" on storage.objects;
-create policy "media public read"
-  on storage.objects for select
-  using (bucket_id = 'media');
+DROP POLICY IF EXISTS "media public read" ON storage.objects;
+CREATE POLICY "media public read"
+  ON storage.objects FOR SELECT TO anon, authenticated
+  USING (bucket_id = 'media');
 
--- Only authenticated admins can upload / replace / delete.
-drop policy if exists "media admin insert" on storage.objects;
-create policy "media admin insert"
-  on storage.objects for insert
-  to authenticated
-  with check (bucket_id = 'media');
+DROP POLICY IF EXISTS "media admin insert" ON storage.objects;
+CREATE POLICY "media admin insert"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'media'
+    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
-drop policy if exists "media admin update" on storage.objects;
-create policy "media admin update"
-  on storage.objects for update
-  to authenticated
-  using (bucket_id = 'media')
-  with check (bucket_id = 'media');
+DROP POLICY IF EXISTS "media admin update" ON storage.objects;
+CREATE POLICY "media admin update"
+  ON storage.objects FOR UPDATE TO authenticated
+  USING (bucket_id = 'media'
+    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  WITH CHECK (bucket_id = 'media'
+    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
-drop policy if exists "media admin delete" on storage.objects;
-create policy "media admin delete"
-  on storage.objects for delete
-  to authenticated
-  using (bucket_id = 'media');
+DROP POLICY IF EXISTS "media admin delete" ON storage.objects;
+CREATE POLICY "media admin delete"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'media'
+    AND (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+-- Verification result
+SELECT 'KSF Supabase schema installed' AS status;
