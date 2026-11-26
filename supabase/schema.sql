@@ -78,12 +78,52 @@ ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS cn_format TEXT;
 ALTER TABLE public.registrations ADD COLUMN IF NOT EXISTS cn_value TEXT;
 ALTER TABLE public.registrations
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE public.registrations
-  ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
+-- Keep the existing id type. Older installations may already use BIGINT
+-- (often an identity/serial column); newer installations use UUID.
+-- Never assign UUID values into a BIGINT column.
+DO $$
+DECLARE
+  id_type TEXT;
+  seq_name TEXT;
+  max_id BIGINT;
+BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO id_type
+  FROM pg_attribute a
+  WHERE a.attrelid = 'public.registrations'::regclass
+    AND a.attname = 'id'
+    AND NOT a.attisdropped;
 
--- Fill any missing ids in a pre-existing table and ensure future ids are generated.
-UPDATE public.registrations SET id = gen_random_uuid() WHERE id IS NULL;
-ALTER TABLE public.registrations ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  IF id_type IN ('bigint', 'integer', 'smallint') THEN
+    SELECT MAX(id)::bigint INTO max_id FROM public.registrations;
+    seq_name := pg_get_serial_sequence('public.registrations', 'id');
+
+    -- Use the existing serial/identity sequence if one is already attached.
+    -- Otherwise create a sequence and attach it as the column default.
+    IF seq_name IS NULL THEN
+      CREATE SEQUENCE IF NOT EXISTS public.registrations_id_seq;
+      ALTER SEQUENCE public.registrations_id_seq
+        OWNED BY public.registrations.id;
+      ALTER TABLE public.registrations
+        ALTER COLUMN id SET DEFAULT nextval('public.registrations_id_seq'::regclass);
+      seq_name := 'public.registrations_id_seq';
+    END IF;
+
+    PERFORM setval(
+      seq_name::regclass,
+      GREATEST(COALESCE(max_id, 0), 1),
+      COALESCE(max_id, 0) > 0
+    );
+  ELSIF id_type = 'uuid' THEN
+    UPDATE public.registrations
+      SET id = gen_random_uuid()
+      WHERE id IS NULL;
+    ALTER TABLE public.registrations
+      ALTER COLUMN id SET DEFAULT gen_random_uuid();
+  ELSE
+    RAISE EXCEPTION 'Unsupported registrations.id type: %', id_type;
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS registrations_id_uidx
   ON public.registrations (id);
