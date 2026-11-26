@@ -20,13 +20,6 @@ export function Hero() {
         <div
           className={`mx-auto max-w-3xl text-center ${anim ? "reveal" : ""}`}
         >
-          {hero.eyebrow ? (
-            <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.18em] text-ink-soft">
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-              {hero.eyebrow}
-            </span>
-          ) : null}
-
           <h1 className="mt-6 text-[clamp(2.4rem,9vw,4.75rem)] font-semibold leading-[1.02] text-ink">
             {hero.title}
           </h1>

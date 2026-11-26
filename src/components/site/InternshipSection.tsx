@@ -93,12 +93,12 @@ export function InternshipSection() {
       {items.length === 0 ? (
         <p className="mt-8 text-sm text-ink-muted">Belum ada pengalaman.</p>
       ) : (
-        <div className={`relative left-1/2 mt-9 w-screen -translate-x-1/2 ${anim ? "reveal" : ""}`}>
+        <div className={`relative mt-9 w-full ${anim ? "reveal" : ""}`}>
           <div
             ref={trackRef}
             className="no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
             style={{
-              paddingInline: "calc((100vw - min(84vw, 420px)) / 2 - 6px)"
+              paddingInline: "calc((100% - min(84vw, 420px)) / 2)"
             }}
           >
             {items.map((item, i) => (
