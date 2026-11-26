@@ -1,17 +1,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-export const SUPABASE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_BUCKET ?? "media";
+// KSF Supabase project configuration. Publishable keys are designed for client-side use.
+export const SUPABASE_URL = "https://ufpgjiguixapczoohale.supabase.co";
+export const SUPABASE_ANON_KEY = "sb_publishable_4yFqjHu9Sk7QyKpxBbJwcA_gj5oE0LJ";
+export const SUPABASE_BUCKET = "media";
 
-/**
- * `true` when the public Supabase credentials are present. When `false` the app
- * falls back to a fully functional local preview mode (localStorage) so the
- * project still runs without a configured backend.
- */
 export const isSupabaseConfigured =
-  SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
+  SUPABASE_URL.startsWith("https://") && SUPABASE_ANON_KEY.length > 20;
 
 let client: SupabaseClient | null = null;
 
