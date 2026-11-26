@@ -72,7 +72,8 @@ async function main() {
   const { error: createError } = await admin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true
+    email_confirm: true,
+    app_metadata: { role: "admin" }
   });
 
   if (createError) {
@@ -84,7 +85,7 @@ async function main() {
       if (!existing) fail(`Akun ${email} tidak ditemukan untuk direset.`);
       const { error: updateError } = await admin.auth.admin.updateUserById(
         existing.id,
-        { password }
+        { password, app_metadata: { role: "admin" } }
       );
       if (updateError) fail(updateError.message);
       console.log(`✔ Password akun ${email} berhasil diperbarui.`);
