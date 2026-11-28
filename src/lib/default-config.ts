@@ -74,7 +74,7 @@ export const DEFAULT_CONFIG: SiteConfig = {
     ]
   },
   hero: {
-    eyebrow: "Elite Community Network",
+    eyebrow: "",
     title: "Kessoku Family",
     subtitle: "Portofolio & Gerbang Resmi Anggota KSF",
     description:
