@@ -19,23 +19,26 @@ export function InternshipSection() {
   const [index, setIndex] = useState(0);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
-  const step = useCallback(() => {
-    const track = trackRef.current;
-    const first = track?.children[0] as HTMLElement | undefined;
-    if (!track || !first) return 0;
-    const gap = parseFloat(getComputedStyle(track).columnGap || "16") || 16;
-    return first.offsetWidth + gap;
-  }, []);
-
   const goTo = useCallback(
     (next: number) => {
       const track = trackRef.current;
       if (!track || items.length === 0) return;
       const clamped = Math.max(0, Math.min(items.length - 1, next));
-      track.scrollTo({ left: clamped * step(), behavior: "smooth" });
+      const card = track.children[clamped] as HTMLElement | undefined;
+      if (!card) return;
+
+      const trackRect = track.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      const cardLeft = track.scrollLeft + cardRect.left - trackRect.left;
+      const centeredLeft = cardLeft - (track.clientWidth - card.clientWidth) / 2;
+
+      track.scrollTo({
+        left: Math.max(0, centeredLeft),
+        behavior: "smooth"
+      });
       setIndex(clamped);
     },
-    [items.length, step]
+    [items.length]
   );
 
   useEffect(() => {
@@ -45,8 +48,22 @@ export function InternshipSection() {
     const onScroll = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
-        const s = step();
-        if (s > 0) setIndex(Math.round(track.scrollLeft / s));
+        const trackRect = track.getBoundingClientRect();
+        const trackCenter = trackRect.left + track.clientWidth / 2;
+        let closestIndex = 0;
+        let closestDistance = Number.POSITIVE_INFINITY;
+
+        Array.from(track.children).forEach((child, childIndex) => {
+          const card = child as HTMLElement;
+          const rect = card.getBoundingClientRect();
+          const distance = Math.abs(rect.left + rect.width / 2 - trackCenter);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestIndex = childIndex;
+          }
+        });
+
+        setIndex(closestIndex);
       });
     };
     track.addEventListener("scroll", onScroll, { passive: true });
@@ -54,7 +71,7 @@ export function InternshipSection() {
       track.removeEventListener("scroll", onScroll);
       cancelAnimationFrame(raf);
     };
-  }, [step]);
+  }, []);
 
   const current = openIndex !== null ? items[openIndex] : null;
 
@@ -96,9 +113,10 @@ export function InternshipSection() {
         <div className={`relative mt-9 w-full ${anim ? "reveal" : ""}`}>
           <div
             ref={trackRef}
-            className="no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
+            className="no-scrollbar box-border flex w-full min-w-0 max-w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-3"
             style={{
-              paddingInline: "calc((100% - min(84vw, 420px)) / 2)"
+              paddingInline: "max(0px, calc((100% - min(84vw, 420px)) / 2))",
+              scrollPaddingInline: "max(0px, calc((100% - min(84vw, 420px)) / 2))"
             }}
           >
             {items.map((item, i) => (
